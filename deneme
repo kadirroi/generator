@@ -1,0 +1,245 @@
+public class CodeAnalysis {
+
+	public static List<MethodInformation> calculate(IJavaProject project) {
+		List<MethodInformation> list = new ArrayList<MethodInformation>();
+		Graph<String> graph = new Graph<String>();
+		try {
+			if (project.isOpen()) {
+
+				IPackageFragment[] packages = project.getPackageFragments();
+				// parse(JavaCore.create(project));
+				for (IPackageFragment mypackage : packages) {
+					if (mypackage.getKind() == IPackageFragmentRoot.K_SOURCE) {
+						for (ICompilationUnit unit : mypackage.getCompilationUnits()) {
+							IType[] types = unit.getTypes();
+							for (int i = 0; i < types.length; i++) {
+								IType type = types[i];
+								IMethod[] methods = type.getMethods();
+								for (int j = 0; j < methods.length; j++) {
+									IMethod method = methods[j];
+									if (!method.isMainMethod()) {
+										Map<Integer, List<MethodInformation>> performIMethodSearch = performIMethodSearch(
+												method);
+										Set<Integer> keys = performIMethodSearch.keySet();
+										int number = (Integer) keys.toArray()[0];
+
+										if (number == 0) {
+											MethodInformation metric = new MethodInformation(method.getElementName(),
+													number, unit, method);
+											list.add(metric);
+										} else {
+
+											List<MethodInformation> listMethods = performIMethodSearch.get(number);
+											for (int k = 0; k < listMethods.size(); k++) {
+												graph.addEdge(method.getResource().getName() +"-->"+ method.getElementName(),
+														listMethods.get(k).getMethod().getParent().getParent().getElementName()
+																+"-->"+ listMethods.get(k).getMethodName(),
+														false);
+											}
+										}
+
+									}
+
+								}
+
+							}
+
+						}
+					}
+
+				}
+			}
+			System.out.println("Graph:\n" + graph.toString());
+			graph.toJson(project.CLASSPATH_FILE_NAME);
+		} catch (CoreException e) {
+			e.printStackTrace();
+		}
+		return list;
+	}
+
+	private static Map<Integer, List<MethodInformation>> performIMethodSearch(IMethod method) throws CoreException {
+		SearchPattern pattern = SearchPattern.createPattern(method, IJavaSearchConstants.REFERENCES);
+		IJavaSearchScope scope = SearchEngine.createWorkspaceScope();
+		MySearchRequestor requestor = new MySearchRequestor();
+		SearchEngine searchEngine = new SearchEngine();
+		searchEngine.search(pattern, new SearchParticipant[] { SearchEngine.getDefaultSearchParticipant() }, scope,
+				requestor, null);
+		return requestor.getMethods();
+
+	}
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  public class MySearchRequestor extends SearchRequestor {
+
+	private int numberOfCalls = 0;
+	private Map<Integer, List<MethodInformation>> methods = new HashMap<Integer, List<MethodInformation>>();
+	private List<MethodInformation> methodsInf = new ArrayList<MethodInformation>();
+
+	@Override
+	public void acceptSearchMatch(SearchMatch match) throws CoreException {
+		if (match instanceof MethodReferenceMatch) {
+			MethodReferenceMatch methodMatch = (MethodReferenceMatch) match;
+			IMethod method = (IMethod) methodMatch.getElement();
+
+			MethodInformation methodInformation = new MethodInformation(method.getElementName(), 1, null, method);
+			methodsInf.add(methodInformation);
+			numberOfCalls++;
+		}
+	}
+
+	/**
+	 * @return the numberOfCall
+	 */
+	public int getNumberOfCalls() {
+		return numberOfCalls;
+	}
+
+	public Map<Integer, List<MethodInformation>> getMethods() {
+		methods.put(numberOfCalls, getMethodsInf());
+		return methods;
+	}
+
+	public List<MethodInformation> getMethodsInf() {
+		return methodsInf;
+	}
+
+}
+
+
+
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+
+public class Graph<T> {
+
+	// We use Hashmap to store the edges in the graph
+	private Map<T, List<T>> map = new HashMap<>();
+
+	// This function adds a new vertex to the graph
+	public void addVertex(T s) {
+		map.put(s, new LinkedList<T>());
+	}
+
+	// This function adds the edge
+	// between source to destination
+	public void addEdge(T source, T destination, boolean bidirectional) {
+
+		if (!map.containsKey(source))
+			addVertex(source);
+
+		if (!map.containsKey(destination))
+			addVertex(destination);
+
+		map.get(source).add(destination);
+		if (bidirectional == true) {
+			map.get(destination).add(source);
+		}
+	}
+
+	// This function gives the count of vertices
+	public void getVertexCount() {
+		System.out.println("The graph has " + map.keySet().size() + " vertex");
+	}
+
+	// This function gives the count of edges
+	public void getEdgesCount(boolean bidirection) {
+		int count = 0;
+		for (T v : map.keySet()) {
+			count += map.get(v).size();
+		}
+		if (bidirection == true) {
+			count = count / 2;
+		}
+		System.out.println("The graph has " + count + " edges.");
+	}
+
+	// This function gives whether
+	// a vertex is present or not.
+	public void hasVertex(T s) {
+		if (map.containsKey(s)) {
+			System.out.println("The graph contains " + s + " as a vertex.");
+		} else {
+			System.out.println("The graph does not contain " + s + " as a vertex.");
+		}
+	}
+
+	// This function gives whether an edge is present or not.
+	public void hasEdge(T s, T d) {
+		if (map.get(s).contains(d)) {
+			System.out.println("The graph has an edge between " + s + " and " + d + ".");
+		} else {
+			System.out.println("The graph has no edge between " + s + " and " + d + ".");
+		}
+	}
+
+	// Prints the adjancency list of each vertex.
+	@Override
+	public String toString() {
+		StringBuilder builder = new StringBuilder();
+
+		for (T v : map.keySet()) {
+			for (T w : map.get(v)) {
+				builder.append(w.toString() + ", ");
+			}
+
+			builder.append(" <-- " + v.toString());
+			builder.append("\n");
+		}
+
+		return (builder.toString());
+	}
+
+	public void toJson(String moduleName) {
+		StringBuilder builder = new StringBuilder();
+		JSONArray jsonArrayRoot = new JSONArray();
+		for (T v : map.keySet()) {
+			JSONArray jsonArray = new JSONArray();
+			for (T w : map.get(v)) {
+				jsonArray.add(w.toString());
+				builder.append(w.toString() + ", ");
+			}
+            JSONObject obj = new JSONObject();
+            obj.put(v.toString(), jsonArray);
+            jsonArrayRoot.add(obj);
+			builder.append(" <-- " + v.toString());
+			builder.append("\n");
+		}
+
+
+		try {
+
+			File file = new File("E:/output.json");
+			if (file.exists()) {
+				file.delete();
+				FileWriter fw = new FileWriter(file, false);// if file exists append to file. Works fine.
+				fw.write(jsonArrayRoot.toJSONString());
+				fw.close();
+			} else {
+				file.createNewFile();
+				FileWriter fw = new FileWriter(file);
+				fw.write(jsonArrayRoot.toJSONString());
+				fw.close();
+			}
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		System.out.println("JSON file created: " + jsonArrayRoot);
+
+	}
+
+  
+  
